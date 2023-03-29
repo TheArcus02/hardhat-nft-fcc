@@ -1,4 +1,4 @@
-import { assert } from 'chai'
+import { assert, expect } from 'chai'
 import { deployments, ethers, network } from 'hardhat'
 import { developmentChains } from '../../helper-hardhat-config'
 import { VRFCoordinatorV2Mock } from '../../typechain-types/@chainlink/contracts/src/v0.8/mocks'
@@ -6,7 +6,7 @@ import { RandomIpfsNft } from '../../typechain-types/contracts/RandomIpfsNFT.sol
 
 !developmentChains.includes(network.name)
     ? describe.skip
-    : describe('BasicNFT', async () => {
+    : describe('Random IPFS NFT', async () => {
           let randomIpfsNft: RandomIpfsNft
           let VRFCoordinatorV2Mock: VRFCoordinatorV2Mock
 
@@ -19,6 +19,30 @@ import { RandomIpfsNft } from '../../typechain-types/contracts/RandomIpfsNFT.sol
               VRFCoordinatorV2Mock = await ethers.getContract('VRFCoordinatorV2Mock', deployer)
           })
 
+          describe('constructor', () => {
+              it('sets starting values correctly', async function () {
+                  const dogTokenUriZero = await randomIpfsNft.getDogTokenUris(0)
+                  const isInitialized = await randomIpfsNft.getInitialized()
+                  assert(dogTokenUriZero.includes('ipfs://'))
+                  assert.equal(isInitialized, true)
+              })
+          })
+
+          describe('requestNft', () => {
+              it("fails if payment isn't sent with the request", async () => {
+                  await expect(randomIpfsNft.requestNft()).to.be.revertedWith(
+                      'RandomIpfsNFT__NeedMoreETHSent'
+                  )
+              })
+              it('emits and event and kicks off a random word request', async () => {
+                  const fee = await randomIpfsNft.getMintFee()
+                  await expect(randomIpfsNft.requestNft({ value: fee.toString() })).to.emit(
+                      randomIpfsNft,
+                      'NftRequested'
+                  )
+              })
+          })
+
           describe('fulfillRandomWords', () => {
               it('mints NFT after random number returned', async () => {
                   const startingCounter = await randomIpfsNft.getTokenCounter()
@@ -27,7 +51,7 @@ import { RandomIpfsNft } from '../../typechain-types/contracts/RandomIpfsNFT.sol
                       randomIpfsNft.once('NftMinted', async () => {
                           try {
                               const endingCounter = await randomIpfsNft.getTokenCounter()
-                              const tokenUri = await randomIpfsNft.getDogTokenUris(startingCounter)
+                              const tokenUri = await randomIpfsNft.tokenURI(startingCounter)
 
                               assert.equal(tokenUri.toString().includes('ipfs://'), true)
                               assert.equal(
